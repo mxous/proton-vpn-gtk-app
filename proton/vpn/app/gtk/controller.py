@@ -192,12 +192,13 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
 
     def autoconnect(self) -> Future:
         """Connects to a server from app configuration.
-            This method is intended to be called at app startup.
+            This method is intended to be called at app startup
+            and when the Quick Connect button is clicked.
+            Falls back to fastest server if no auto connect setting is configured.
         """
         connect_at_app_startup = self.get_app_configuration().connect_at_app_startup
 
-        # Temporary hack for parsing. Should be improved
-        if connect_at_app_startup == "FASTEST":
+        if not connect_at_app_startup or connect_at_app_startup == "FASTEST":
             return self.connect_to_fastest_server()
 
         return self._connect_to(connect_at_app_startup)
@@ -210,6 +211,10 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
         if "#" in connect_to:
             return self.connect_to_server(connect_to)
 
+        if "-" in connect_to:
+            _, city_name = connect_to.split("-", maxsplit=1)
+            return self.connect_to_city(city_name)
+
         return self.connect_to_country(connect_to)
 
     def connect_to_country(self, country_code: str) -> Future:
@@ -220,6 +225,16 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
         "connected" state.
         """
         server = self._api.server_list.get_fastest_in_country(country_code)
+        return self._connect_to_vpn(server)
+
+    def connect_to_city(self, city_name: str) -> Future:
+        """
+        Establishes a VPN connection to the fastest server in the specified city.
+        :param city_name: The name of the city to connect to (e.g. "New York").
+        :return: A Future object that resolves once the connection reaches the
+        "connected" state.
+        """
+        server = self._api.server_list.get_fastest_in_city(city_name)
         return self._connect_to_vpn(server)
 
     def connect_to_fastest_server(self) -> Future:

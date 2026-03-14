@@ -161,6 +161,7 @@ class TrayIndicator:
             self._tray = TrayIcon()
             self._tray.setup()
 
+        self._tray.set_left_click(self._on_toggle_app_visibility_menu_entry_clicked)
         self.status_update(self._controller.current_connection_status)
         self._controller.register_connection_status_subscriber(self)
         self._set_main_window(main_window=main_window)
