@@ -17,6 +17,7 @@ You should have received a copy of the GNU General Public License
 along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
 """
 from __future__ import annotations
+import re
 import subprocess  # nosec B404 # nosemgrep: gitlab.bandit.B404
 from concurrent.futures import Future
 from importlib import metadata
@@ -235,6 +236,67 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
         "connected" state.
         """
         server = self._api.server_list.get_fastest_in_city(city_name)
+        return self._connect_to_vpn(server)
+
+    MAX_SERVER_LOAD = 50
+
+    def connect_to_next_server(self) -> Future:
+        """
+        Connects to the next server in the same city as the current connection.
+        Picks the next server number with load below MAX_SERVER_LOAD.
+        Cycles back to the first server if no higher number is available.
+        Falls back to fastest server if not currently connected.
+        """
+        current_server_id = self.current_server_id
+        if not current_server_id:
+            return self.connect_to_fastest_server()
+
+        current_server = self._api.server_list.get_by_id(current_server_id)
+        city = current_server.city
+        if not city:
+            return self.connect_to_fastest_server()
+
+        # Parse the server number from the name (e.g. "US-NY#42" -> 42)
+        match = re.search(r"#(\d+)$", current_server.name)
+        current_number = int(match.group(1)) if match else 0
+
+        # Get all available servers in the same city
+        city_servers = list(ServerList.get_available_servers(
+            ServerList.get_servers_in_city(self._api.server_list.logicals, city),
+            self._api.server_list.user_tier
+        ))
+
+        # Parse numbers and sort
+        def server_number(server):
+            m = re.search(r"#(\d+)$", server.name)
+            return int(m.group(1)) if m else 0
+
+        city_servers.sort(key=server_number)
+
+        # Find next server with load < MAX_SERVER_LOAD, starting after current
+        after = [s for s in city_servers
+                 if server_number(s) > current_number and s.load < self.MAX_SERVER_LOAD]
+        before = [s for s in city_servers
+                  if server_number(s) <= current_number and s.id != current_server_id
+                  and s.load < self.MAX_SERVER_LOAD]
+
+        candidates = after + before  # after current first, then cycle back
+
+        if not candidates:
+            # No low-load server available, just pick the next one regardless
+            after_any = [s for s in city_servers if server_number(s) > current_number]
+            before_any = [s for s in city_servers
+                          if server_number(s) <= current_number and s.id != current_server_id]
+            candidates = after_any + before_any
+
+        if not candidates:
+            return self.autoconnect()
+
+        server = candidates[0]
+        logger.info(
+            f"Next server: {server.name} (load: {server.load}%)",
+            category="app", event="next_server"
+        )
         return self._connect_to_vpn(server)
 
     def connect_to_fastest_server(self) -> Future:
