@@ -298,7 +298,7 @@ def test_connect_entry_connects_to_vpn_when_activated(controller_mock):
     process_gtk_events()
 
     tray_indicator.active_connect_entry()
-    controller_mock.connect_to_fastest_server.assert_called_once()
+    controller_mock.autoconnect.assert_called_once()
 
 
 def test_connect_pinned_server_entry_connects_to_vpn_when_activated(controller_mock):

@@ -240,8 +240,8 @@ class TrayIndicator:
                                  self._on_connect_entry_clicked,
                                  self.enable_connect_entry,
                                  self.display_connect_entry)
-        self._tray.add_menu_item("Next Server",
-                                 self._on_next_server_entry_clicked,
+        self._tray.add_menu_item("Randomize",
+                                 self._on_randomize_entry_clicked,
                                  self.enable_disconnect_entry,
                                  self.display_disconnect_entry)
         self._tray.add_menu_item("Disconnect",
@@ -281,9 +281,9 @@ class TrayIndicator:
         future = self._controller.autoconnect()
         future.add_done_callback(lambda f: GLib.idle_add(f.result))  # bubble up exceptions if any.
 
-    def _on_next_server_entry_clicked(self):
-        logger.info("Next server", category="ui.tray", event="next_server")
-        future = self._controller.connect_to_next_server()
+    def _on_randomize_entry_clicked(self):
+        logger.info("Randomize server", category="ui.tray", event="randomize_server")
+        future = self._controller.connect_to_random_server()
         future.add_done_callback(lambda f: GLib.idle_add(f.result))
 
     def _on_disconnect_entry_clicked(self):
