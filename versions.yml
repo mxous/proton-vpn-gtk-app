@@ -1,3 +1,24 @@
+version: 4.15.2
+time: 2026/03/30 10:56
+author: Richard Paterson
+email: richard.paterson@proton.ch
+urgency: low
+stability: unstable
+description:
+- "feat: NPS survey popover"
+- "feat: Group the USA by states instead of cities (Pep Llaneras)"
+- "chore: add type hints (round 1) (Pep Llaneras)"
+---
+version: 4.15.1
+time: 2026/03/17 15:00
+author: Pep Llaneras
+email: josep.llaneras@proton.ch
+urgency: low
+stability: unstable
+description:
+- "fix: grow app width with content"
+- "feat: add feature icons tooltip"
+---
 version: 4.15.0
 time: 2026/03/05 09:00
 author: Pep Llaneras
@@ -10,7 +31,7 @@ description:
 - "fix: smoothen row collapse"
 - "fix: show paid servers first to paid users"
 - "fix: make menu button visible on KDE (thanks to https://github.com/ptr1337)"
-- "feat: show secure core servers group`"
+- "feat: show secure core servers group"
 - "fix: show upgrade link on hover"
 - "fix: preserve expanded rows on server list refresh"
 - "fix: change DE detection to use XDG_CURRENT_DESKTOP (thanks to https://github.com/SRugina and https://github.com/proletarius101)"

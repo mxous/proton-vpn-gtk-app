@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from gi.repository import GLib, GObject
 
@@ -49,8 +49,8 @@ class ServerListWidgetState:
         server_list: list of servers to be displayed.
         country_rows: country rows indexed by country code.
     """
-    user_tier: int = None
-    server_list: ServerList = None
+    user_tier: Optional[int] = None
+    server_list: Optional[ServerList] = None
     country_rows: Dict[str, DeferredCountryRow] = field(default_factory=dict)
 
     def get_server_by_id(self, server_id: str) -> LogicalServer:
@@ -74,6 +74,7 @@ class ServerListWidget(Gtk.ScrolledWindow):
             hscrollbar_policy=Gtk.PolicyType.NEVER,
             vscrollbar_policy=Gtk.PolicyType.AUTOMATIC
         )
+        self.set_propagate_natural_width(True)
         self._controller = controller
         self._container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self._container.set_name("server-list-widget-container")

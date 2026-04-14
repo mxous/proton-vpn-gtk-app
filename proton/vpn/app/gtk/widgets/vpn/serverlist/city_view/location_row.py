@@ -1,5 +1,5 @@
 """
-This module defines the city rows displayed in the server list widget.
+This module defines the location rows displayed in the server list widget.
 
 
 Copyright (c) 2026 Proton AG
@@ -25,21 +25,26 @@ from __future__ import annotations
 from itertools import chain
 from typing import List, Optional
 
+from gi.repository import GLib
+
 from proton.vpn.session.servers import Location, TierEnum
 from proton.vpn.app.gtk import Gtk
 from proton.vpn.app.gtk.controller import Controller
 from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.expandable_row import ExpandableRow
 from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.row_content import RowContent
-from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.utils import sync_rows_with_model_items
-from proton.vpn.app.gtk.widgets.vpn.serverlist.icons import CityIcon
+from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.row_view_model import RowViewModel
+from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.utils import (
+    make_connect_callback, sync_rows_with_model_items
+)
+from proton.vpn.app.gtk.widgets.vpn.serverlist.icons import LocationIcon
 
 
-class CityRow(Gtk.Box):
-    """Row representing a city in the server list widget."""
+class LocationRow(Gtk.Box):
+    """Row representing a location in the server list widget."""
 
     def __init__(self):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
-        self._city: Optional[Location] = None
+        self._location: Optional[Location] = None
         self._controller = None
         self._user_tier = None
         self._expandable_row = ExpandableRow(
@@ -50,37 +55,51 @@ class CityRow(Gtk.Box):
 
     # pylint: disable=too-many-arguments
     def display(
-        self, controller: Controller, city: Location, user_tier: int,
-        connected_server_id: str = None, expanded: bool = False
+        self, controller: Controller, location: Location, user_tier: int,
+        expanded: bool = False
     ):
-        """Displays the city row according to the specified parameters.
+        """Displays the location row according to the specified parameters.
 
         Args:
             controller: The controller instance
-            city: The city to display
+            location: The location to display
             user_tier: The user's tier level
-            connected_server_id: Optional connected server ID
-            expanded: Whether the city should be expanded (defaults to False)
+            expanded: Whether the location row should be expanded (defaults to False)
         """
         self.reset(keep_server_rows=expanded)
         self._controller = controller
-        self._city = city
+        self._location = location
         self._user_tier = user_tier
         self._expandable_row.connect_toggle()
-        self._expandable_row.row_content.display(
-            controller, city, user_tier,
-            CityIcon(), connected_server_id
+        upgrade_required = user_tier == TierEnum.FREE and not location.free
+
+        row_data = RowViewModel(
+            name=location.name,
+            on_connect=make_connect_callback(controller, location.servers, user_tier),
+            free=location.free,
+            under_maintenance=location.under_maintenance and not upgrade_required,
+            features=location.features,
+            smart_routing=location.smart_routing,
+            toggable=True,
+            upgrade_required=upgrade_required,
+            icon=LocationIcon(),
+            connect_button_tooltip=f"Connect to {location.name}",
+            toggle_button_tooltips=(
+                f"Show all servers from {location.name}",
+                f"Hide all servers from {location.name}",
+            ),
         )
+        self._expandable_row.row_content.display(row_data)
         if expanded:
             self.click_toggle_button()
 
     def reset(self, keep_server_rows: bool = False):
-        """Resets the city row to its initial state."""
+        """Resets the location row to its initial state."""
         self._expandable_row.reset(keep_children=keep_server_rows)
 
     @property
     def label(self) -> str:
-        """Returns the city label."""
+        """Returns the location label."""
         return self._expandable_row.row_content.label
 
     @property
@@ -90,7 +109,7 @@ class CityRow(Gtk.Box):
 
     @property
     def expanded(self) -> bool:
-        """Returns whether the city row is currently expanded or not."""
+        """Returns whether the location row is currently expanded or not."""
         return self._expandable_row.row_content.expanded
 
     def grab_focus(self):  # pylint: disable=arguments-differ
@@ -107,14 +126,36 @@ class CityRow(Gtk.Box):
             server_row.reset()
 
     def _add_server_rows(self):
-        servers = self._city.servers
-        if self._user_tier == TierEnum.FREE and self._city.free:
-            servers = chain(self._city.free_servers, self._city.paid_servers)
+        servers = self._location.servers
+        if self._user_tier == TierEnum.FREE and self._location.free:
+            servers = chain(self._location.free_servers, self._location.paid_servers)
         else:
-            servers = chain(self._city.paid_servers, self._city.free_servers)
+            servers = chain(self._location.paid_servers, self._location.free_servers)
 
+        # Capture controller directly to avoid closing over `self` in on_connect
+        controller = self._controller
+
+        # pylint: disable=duplicate-code
         def display_server_row(server_row, server):
-            server_row.display(self._controller, server, self._user_tier)
+            upgrade_required = self._user_tier == TierEnum.FREE and not server.free
+
+            def on_connect():
+                future = controller.connect_to_server(server.name)
+                future.add_done_callback(lambda f: GLib.idle_add(f.result))
+
+            row_data = RowViewModel(
+                name=server.name,
+                on_connect=on_connect,
+                free=server.free,
+                under_maintenance=server.under_maintenance and not upgrade_required,
+                features=server.features,
+                smart_routing=server.smart_routing,
+                toggable=False,
+                upgrade_required=upgrade_required,
+                load=server.load,
+                connect_button_tooltip=f"Connect to {server.name}",
+            )
+            server_row.display(row_data)
 
         sync_rows_with_model_items(
             list(servers),

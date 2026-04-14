@@ -21,7 +21,7 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
 """
 from __future__ import annotations
 import time
-from typing import List
+from typing import List, Optional, cast
 import logging
 from unittest.mock import Mock
 
@@ -33,22 +33,34 @@ from proton.vpn.app.gtk.controller import Controller
 from proton.vpn.session.servers import ServerList, TierEnum
 from proton.vpn.session.servers.server_list_fetcher import ServerListFetcher
 
-from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.country import CountryRow
+from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.country_row import CountryRow
+from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.server_list_header_row import (
+    ServerListHeaderRow,
+)
 from proton.vpn.app.gtk.widgets.vpn.search_entry import SearchEntry
 
-from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.utils import sync_rows_with_model_items
+from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.utils import (
+    get_children,
+    sync_rows_with_model_items,
+)
 
 logger = proton_logging.getLogger(__name__)
 
 
 class ServerListWidget(Gtk.ScrolledWindow):
-    """Server list widget displaying countries, cities and their servers."""
+    """Server list widget displaying countries, locations and their servers."""
 
     def __init__(self, controller: Controller, search_entry: SearchEntry | None = None):
         super().__init__()
         self._controller = controller
-        self._user_tier = None
+        self._user_tier: Optional[int] = None
         self._search_entry = search_entry
+
+        self.set_policy(
+            hscrollbar_policy=Gtk.PolicyType.NEVER,
+            vscrollbar_policy=Gtk.PolicyType.AUTOMATIC
+        )
+        self.set_propagate_natural_width(True)
 
         # pylint: disable=duplicate-code
         self._container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -57,6 +69,15 @@ class ServerListWidget(Gtk.ScrolledWindow):
         self._container.set_margin_end(10)  # Leave space for the scroll bar.
         self._container.set_spacing(5)
         self.set_child(self._container)
+
+        self._header_row = ServerListHeaderRow()
+        self._container.prepend(self._header_row)
+
+        self._country_rows_container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self._country_rows_container.set_name("country-rows-container")
+        self._country_rows_container.set_vexpand(True)
+        self._country_rows_container.set_spacing(5)
+        self._container.append(self._country_rows_container)
 
     def display(self, user_tier: int, server_list: ServerList):
         """Builds and displays the server list."""
@@ -92,10 +113,10 @@ class ServerListWidget(Gtk.ScrolledWindow):
                 country.grab_focus()
                 return
 
-            # City
-            for city in country.cities:
-                if city.name.lower() == name_to_search.lower():
-                    country.focus_on_city(city.name)
+            # Location
+            for location in country.locations:
+                if location.name.lower() == name_to_search.lower():
+                    country.focus_on_location(location.name)
                     return
 
     @GObject.Signal(name="ui-updated")
@@ -109,21 +130,20 @@ class ServerListWidget(Gtk.ScrolledWindow):
     @property
     def country_rows(self) -> List[CountryRow]:
         """Returns the list of country rows currently displayed."""
-        country_rows = []
-        country_row = self._container.get_first_child()
-        while country_row:
-            country_rows.append(country_row)
-            country_row = country_row.get_next_sibling()
-        return country_rows
+        return cast(List[CountryRow], get_children(self._country_rows_container))
 
     def _remove_country_rows(self):
         for row in self.country_rows:
             row.reset()
-            self._container.remove(row)
+            self._country_rows_container.remove(row)
 
     def _display_country_rows(self, server_list: ServerList):
-        countries = server_list.group_by_country(group_by_city=True)
-        if self._user_tier == TierEnum.FREE:
+        free_user = self._user_tier == TierEnum.FREE
+        countries = server_list.group_by_country(
+            group_by_location=True,
+            include_free_servers=free_user
+        )
+        if free_user:
             # If the current user has a free account, sort the countries having
             # free servers first.
             countries.sort(key=lambda country: (0 if country.free else 1, country.name))
@@ -132,11 +152,11 @@ class ServerListWidget(Gtk.ScrolledWindow):
         expanded_countries = {row.country_code.lower(): row.expanded for row in self.country_rows}
         expanded_groups_per_country = {
             country_row.country_code.lower(): set(
-                city_row.label.lower() for city_row in (
-                    country_row.city_rows
+                location_row.label.lower() for location_row in (
+                    country_row.location_rows
                     + ([country_row.secure_core_row] if country_row.secure_core_row else [])
                 )
-                if city_row.expanded
+                if location_row.expanded
             )
             for country_row in self.country_rows
         }
@@ -152,10 +172,11 @@ class ServerListWidget(Gtk.ScrolledWindow):
         sync_rows_with_model_items(
             countries,
             self.country_rows,
-            self._container,
+            self._country_rows_container,
             CountryRow,
             display_country_row
         )
+        self._header_row.set_count(len(countries))
 
     def _on_server_list_update(self):
         """Whenever a new server list is received the UI should be updated."""

@@ -19,6 +19,10 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
 """
+import logging
+from os import environ
+from typing import Optional
+
 from gi.repository import Gtk
 
 from proton.vpn.app.gtk.controller import Controller
@@ -27,29 +31,31 @@ from proton.vpn.app.gtk.widgets.headerbar.headerbar import HeaderBar
 from proton.vpn.app.gtk.widgets.main.notification_bar import NotificationBar
 from proton.vpn.app.gtk.widgets.main.notifications import Notifications
 from proton.vpn.app.gtk.widgets.main.loading_widget import OverlayWidget
+from proton.vpn.app.gtk.widgets.main.pull_notifications.nps_survey_modal import \
+    NPSSurvey
 
 
 class MainWindow(Gtk.ApplicationWindow):
     """Main window."""
 
     WIDTH = 450
-    HEIGHT = 650
+    HEIGHT = 700
 
     # pylint: disable=too-many-arguments
     def __init__(
             self, application: Gtk.Application,
             controller: Controller,
-            notifications: Notifications = None,
-            header_bar: HeaderBar = None,
-            main_widget: MainWidget = None,
-            overlay_widget: OverlayWidget = None
+            notifications: Optional[Notifications] = None,
+            header_bar: Optional[HeaderBar] = None,
+            main_widget: Optional[MainWidget] = None,
+            overlay_widget: Optional[OverlayWidget] = None
     ):
         super().__init__(application=application)
         self._application = application
         self.get_settings().props.gtk_application_prefer_dark_theme = True
         self._controller = controller
-        self._close_window_handler_id = None
-        self._shortcut_controller = None
+        self._close_window_handler_id: Optional[int] = None
+        self._shortcut_controller: Optional[Gtk.ShortcutController] = None
 
         self._configure_window()
 
@@ -74,6 +80,9 @@ class MainWindow(Gtk.ApplicationWindow):
             overlay_widget=self._overlay_widget
         )
         self.set_child(self.main_widget)
+
+        self.connect("show", self._display_pending_widget)
+
         self.main_widget.set_visible(True)
 
     @property
@@ -114,9 +123,8 @@ class MainWindow(Gtk.ApplicationWindow):
         Handle delete-event, set window resize restrictions...
         """
         self.set_name("main-window")
-
-        self.set_default_size(MainWindow.WIDTH, MainWindow.HEIGHT)
         self.set_resizable(False)
+        self.set_size_request(MainWindow.WIDTH, MainWindow.HEIGHT)
 
     def configure_close_button_behaviour(self, tray_indicator_enabled: bool):
         """Configures the behaviour of the button to close the window
@@ -178,3 +186,16 @@ class MainWindow(Gtk.ApplicationWindow):
             "close-request",
             on_close_button_clicked_then_click_quit_menu_entry
         )
+
+    def _display_pending_widget(self, _):
+        if "PROTON_VPN_FEATURE_FLAG_NPS" not in environ:
+            return
+
+        if self.is_visible():
+            pending_attention_window = NPSSurvey(
+                self._controller,
+                submit_handler=lambda score, text: logging.info("NPS: %i %s", score, text),
+                dismiss_handler=lambda: logging.info("NPS dismissed")
+            )
+            pending_attention_window.set_transient_for(self)
+            pending_attention_window.show()
