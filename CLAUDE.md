@@ -126,3 +126,5 @@ CSS files in `assets/style/`: `main.css` imports `dark_colours.css` and `dark_bu
 ## Versioning
 
 Version is in `versions.yml` (top entry). To bump: add a new block at the top of `versions.yml` following the existing format, then run `scripts/build_packages.py` to regenerate debian/rpm changelogs.
+
+-c 'sleep 5 && cd /home/m/Projects/proton-vpn-gtk-app && python -m proton.vpn.app.gtk'

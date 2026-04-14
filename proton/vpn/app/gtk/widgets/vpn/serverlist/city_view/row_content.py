@@ -27,7 +27,7 @@ from gi.repository import GLib, GObject
 from proton.vpn import logging
 from proton.vpn.connection.enum import ConnectionStateEnum
 from proton.vpn.session.servers import (
-    City, Country, LogicalServer, ServerFeatureEnum, ServerList, TierEnum,
+    Location, Country, LogicalServer, ServerFeatureEnum, ServerList, TierEnum,
     SecureCoreGroup
 )
 
@@ -124,7 +124,7 @@ class RowContent(Gtk.Box):  # pylint: disable=too-many-instance-attributes
     def display(
         self,
         controller: Controller,
-        server_group: Union[Country, City, LogicalServer, SecureCoreGroup],
+        server_group: Union[Country, Location, LogicalServer, SecureCoreGroup],
         user_tier: int,
         icon: Gtk.Image = None,
         connected_server_id: str = None,
@@ -141,7 +141,7 @@ class RowContent(Gtk.Box):  # pylint: disable=too-many-instance-attributes
         self._toggle_button_tooltips = toggle_button_tooltips
         if self._icon:
             self.prepend(self._icon)
-        self._toggable = isinstance(server_group, (Country, City, SecureCoreGroup))
+        self._toggable = isinstance(server_group, (Country, Location, SecureCoreGroup))
         if isinstance(server_group, LogicalServer):
             self._server_load.set_visible(True)
             self._server_load.set_load(server_group.load)

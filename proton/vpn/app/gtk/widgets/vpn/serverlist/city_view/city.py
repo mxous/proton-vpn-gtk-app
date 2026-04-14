@@ -25,7 +25,7 @@ from __future__ import annotations
 from itertools import chain
 from typing import List, Optional
 
-from proton.vpn.session.servers import City, TierEnum
+from proton.vpn.session.servers import Location, TierEnum
 from proton.vpn.app.gtk import Gtk
 from proton.vpn.app.gtk.controller import Controller
 from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.expandable_row import ExpandableRow
@@ -39,7 +39,7 @@ class CityRow(Gtk.Box):
 
     def __init__(self):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
-        self._city: Optional[City] = None
+        self._city: Optional[Location] = None
         self._controller = None
         self._user_tier = None
         self._expandable_row = ExpandableRow(
@@ -50,7 +50,7 @@ class CityRow(Gtk.Box):
 
     # pylint: disable=too-many-arguments
     def display(
-        self, controller: Controller, city: City, user_tier: int,
+        self, controller: Controller, city: Location, user_tier: int,
         connected_server_id: str = None, expanded: bool = False
     ):
         """Displays the city row according to the specified parameters.

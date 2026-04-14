@@ -20,7 +20,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from proton.vpn.session.servers import City, LogicalServer, TierEnum
+from proton.vpn.session.servers import Location, LogicalServer, TierEnum
 
 from proton.vpn.app.gtk.controller import Controller
 from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.city import CityRow
@@ -68,7 +68,7 @@ def test_city_row_displays_free_servers_first_to_free_users(
     Free users should have free servers listed first.
     Plus users should have plus servers listed first.
     """
-    city = City(name="Tokyo", servers=plus_and_free_servers)
+    city = Location(name="Tokyo", servers=plus_and_free_servers)
     city_row = CityRow()
 
     city_row.display(Mock(spec=Controller), city, user_tier)
@@ -114,7 +114,7 @@ def free_and_plus_servers():
 
 def test_city_row_displays_paid_servers_first_to_paid_users(free_and_plus_servers):
     """Paid users (e.g. Plus tier) should have paid servers listed first."""
-    city = City(name="Tokyo", servers=free_and_plus_servers)
+    city = Location(name="Tokyo", servers=free_and_plus_servers)
     city_row = CityRow()
 
     city_row.display(Mock(spec=Controller), city, TierEnum.PLUS)
@@ -127,7 +127,7 @@ def test_city_row_displays_paid_servers_first_to_paid_users(free_and_plus_server
 
 
 def test_display_shows_the_row_in_expanded_state_when_specified(plus_and_free_servers):
-    city = City(name="Tokyo", servers=plus_and_free_servers)
+    city = Location(name="Tokyo", servers=plus_and_free_servers)
     city_row = CityRow()
     mock_controller = Mock(spec=Controller)
 

@@ -122,7 +122,7 @@ class ServerListWidget(Gtk.ScrolledWindow):
             self._container.remove(row)
 
     def _display_country_rows(self, server_list: ServerList):
-        countries = server_list.group_by_country(cities=True)
+        countries = server_list.group_by_country(group_by_city=True)
         if self._user_tier == TierEnum.FREE:
             # If the current user has a free account, sort the countries having
             # free servers first.

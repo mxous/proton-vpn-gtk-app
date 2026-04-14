@@ -25,7 +25,7 @@ from __future__ import annotations
 from itertools import chain
 from typing import List, Optional
 
-from proton.vpn.session.servers import Country, City, TierEnum
+from proton.vpn.session.servers import Country, Location, TierEnum
 from proton.vpn.app.gtk import Gtk
 from proton.vpn.app.gtk.controller import Controller
 from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.city import CityRow
@@ -136,9 +136,9 @@ class CountryRow(Gtk.Box):
                 return
 
     @property
-    def cities(self) -> List[City]:
+    def cities(self) -> List[Location]:
         """Returns the list of cities in the country."""
-        return self._country.cities
+        return self._country.locations
 
     @property
     def city_rows(self) -> List[CityRow]:

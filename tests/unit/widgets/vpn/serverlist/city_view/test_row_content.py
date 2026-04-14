@@ -2,7 +2,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from proton.vpn.session.servers import City, Country, LogicalServer, ServerFeatureEnum, TierEnum
+from proton.vpn.session.servers import Location, Country, LogicalServer, ServerFeatureEnum, TierEnum
 from proton.vpn.app.gtk.controller import Controller
 from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.row_content import RowContent
 from proton.vpn.app.gtk.widgets.vpn.serverlist.icons import P2PIcon, SmartRoutingIcon, TORIcon
@@ -25,7 +25,7 @@ def test_header_displays_city_name_when_server_group_is_a_city():
     header = RowContent()
     header.display(
         controller=Mock(spec=Controller),
-        server_group=City(name="Tokyo", servers=[]),
+        server_group=Location(name="Tokyo", servers=[]),
         user_tier=TierEnum.PLUS
     )
 
@@ -56,7 +56,7 @@ def test_header_displays_server_name_when_server_group_is_a_single_server():
 
 @pytest.mark.parametrize("server_group", [
     Country(code="US", servers=[]),
-    City(name="Tokyo", servers=[]),
+    Location(name="Tokyo", servers=[]),
 ])
 def test_header_displays_toggle_button_when_server_group_is_toggleable(server_group):
     """Test that the toggle button is visible when displaying a country or city."""
@@ -163,7 +163,7 @@ def test_header_displays_server_load_when_server_group_is_a_single_server():
 
 @pytest.mark.parametrize("server_group_factory", [
     lambda server: Country(code="IS", servers=[server]),
-    lambda server: City(name="Reykjavik", servers=[server]),
+    lambda server: Location(name="Reykjavik", servers=[server]),
     lambda server: server,
 ])
 def test_header_displays_server_features_for_all_server_groups(server_group_factory):
