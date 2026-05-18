@@ -2,17 +2,18 @@ from unittest.mock import Mock, patch
 import pytest
 
 from proton.vpn.app.gtk.controller import Controller
+from proton.vpn.session.dataclasses import NPSSurveyResponse
 
 
 MockOpenVPNTCP = Mock(name="MockOpenVPNTCP")
-MockOpenVPNTCP.cls.protocol = "openvpn-tcp"
-MockOpenVPNTCP.cls.ui_protocol = "OpenVPN (TCP)"
+MockOpenVPNTCP.protocol = "openvpn-tcp"
+MockOpenVPNTCP.ui_protocol = "OpenVPN (TCP)"
 MockOpenVPNUDP = Mock(name="MockOpenVPNUDP")
-MockOpenVPNUDP.cls.protocol = "openvpn-udp"
-MockOpenVPNUDP.cls.ui_protocol = "OpenVPN (UDP)"
+MockOpenVPNUDP.protocol = "openvpn-udp"
+MockOpenVPNUDP.ui_protocol = "OpenVPN (UDP)"
 MockWireGuard = Mock(name="MockWireGuard")
-MockWireGuard.cls.protocol = "wireguard"
-MockWireGuard.cls.ui_protocol = "WireGuard (experimental)"
+MockWireGuard.protocol = "wireguard"
+MockWireGuard.ui_protocol = "WireGuard"
 
 
 @pytest.mark.parametrize(
@@ -48,6 +49,38 @@ def test_autoconnect_feature(
             mock_method.assert_called_once()
 
 
+def test_submit_nps_survey_response_delegates_to_api():
+    mock_executor = Mock()
+    mock_api = Mock()
+    controller = Controller(
+        executor=mock_executor,
+        exception_handler=Mock(),
+        api=mock_api,
+        vpn_reconnector=Mock(),
+        app_config=Mock()
+    )
+    nps_response = Mock(NPSSurveyResponse)
+
+    controller.submit_nps_survey_response(nps_response)
+
+    mock_executor.submit.assert_called_once_with(mock_api.submit_nps_response, nps_response)
+
+
+def test_set_notification_seen_delegates_to_api():
+    mock_api = Mock()
+    controller = Controller(
+        executor=Mock(),
+        exception_handler=Mock(),
+        api=mock_api,
+        vpn_reconnector=Mock(),
+        app_config=Mock()
+    )
+
+    controller.set_notification_seen("survey-123")
+
+    mock_api.set_notification_seen.assert_called_once_with("survey-123")
+
+
 @patch("proton.vpn.app.gtk.controller.Controller.get_settings")
 def test_get_available_protocols_returns_list_of_protocols_which_includes_wireguard_when_feature_flag_is_disabled_and_selected_protocol_is_wireguard(mock_get_settings):
     mock_connector = Mock()
@@ -60,10 +93,10 @@ def test_get_available_protocols_returns_list_of_protocols_which_includes_wiregu
         app_config=Mock(),
         vpn_connector=mock_connector
     )
-    mock_get_settings.return_value.protocol = MockWireGuard.cls.protocol
+    mock_get_settings.return_value.protocol = MockWireGuard.protocol
     mock_api.refresher.feature_flags.get.return_value = False
-    mock_connector.get_available_protocols_for_backend.return_value = [MockOpenVPNUDP, MockOpenVPNTCP, MockWireGuard]
-    protocols = controller.get_available_protocols()
+    mock_connector.iter_available_protocols.return_value = [MockOpenVPNUDP, MockOpenVPNTCP, MockWireGuard]
+    protocols = controller.get_available_protocols("generic")
     assert MockWireGuard in protocols
 
 
@@ -79,8 +112,8 @@ def test_get_available_protocols_returns_list_of_protocols_which_includes_wiregu
         app_config=Mock(),
         vpn_connector=mock_connector
     )
-    mock_get_settings.return_value.protocol = MockOpenVPNTCP.cls.protocol
+    mock_get_settings.return_value.protocol = MockOpenVPNTCP.protocol
     mock_api.refresher.feature_flags.get.return_value = True
-    mock_connector.get_available_protocols_for_backend.return_value = [MockOpenVPNUDP, MockOpenVPNTCP, MockWireGuard]
-    protocols = controller.get_available_protocols()
+    mock_connector.iter_available_protocols.return_value = [MockOpenVPNUDP, MockOpenVPNTCP, MockWireGuard]
+    protocols = controller.get_available_protocols("generic")
     assert MockWireGuard in protocols

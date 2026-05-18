@@ -24,7 +24,7 @@ from concurrent.futures import Future
 from importlib import metadata
 from threading import Event
 from types import TracebackType
-from typing import Optional, Type, Callable, Union, Tuple
+from typing import Optional, Type, Callable, Union, Tuple, List
 
 from gi.repository import GLib
 from proton.vpn.session import ServerList
@@ -34,11 +34,13 @@ from proton.vpn import logging
 from proton.vpn.connection import VPNConnection, states
 from proton.vpn.core.api import ProtonVPNAPI, VPNAccount
 from proton.vpn.core.session_holder import ClientTypeMetadata
-from proton.vpn.core.connection import VPNConnector
+from proton.vpn.core.vpnconnector import VPNConnector
 from proton.vpn.core.cache_handler import CacheHandler
 from proton.vpn.core.settings import Settings
 from proton.vpn.session.servers import LogicalServer
-from proton.vpn.session.session import FeatureFlags
+from proton.vpn.session.session import \
+    FeatureFlags, \
+    Notifications as PullNotifications
 from proton.vpn.session.u2f_interaction import UserInteraction
 
 from proton.vpn.connection.enum import KillSwitchSetting as\
@@ -53,6 +55,7 @@ from proton.vpn.app.gtk.utils import glib
 from proton.vpn.app.gtk.utils.exception_handler import ExceptionHandler
 from proton.vpn.app.gtk.utils.executor import AsyncExecutor
 from proton.vpn.app.gtk.widgets.headerbar.menu.bug_report_dialog import BugReportForm
+from proton.vpn.session.dataclasses import NPSSurveyResponse
 from proton.vpn.app.gtk.config import AppConfig, APP_CONFIG
 from proton.vpn.app.gtk.conflicts import Conflicts, Conflict
 
@@ -65,7 +68,6 @@ DOT = "."  # pylint: disable=invalid-name
 
 class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-attributes
     """The C in the MVC pattern."""
-    DEFAULT_BACKEND = "linuxnetworkmanager"
 
     @staticmethod
     def get(executor: AsyncExecutor, exception_handler: "ExceptionHandler") -> Controller:
@@ -453,12 +455,29 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
         """Returns object which specifies which features are to be enabled or not."""
         return self._api.refresher.feature_flags
 
+    @property
+    def notifications(self) -> PullNotifications:
+        """Returns cached VPN pull notifications."""
+        return self._api.refresher.notifications
+
+    def set_notification_seen(self, notification_id: str):
+        """Marks a notification as seen and persists the change to disk."""
+        self._api.set_notification_seen(notification_id)
+
     def submit_bug_report(self, bug_report: BugReportForm) -> Future:
         """Submits an issue report.
         :return: A Future object wrapping the result of the API."""
         return self.executor.submit(
             self._api.submit_bug_report,
             bug_report
+        )
+
+    def submit_nps_survey_response(self, nps_response: NPSSurveyResponse) -> Future:
+        """Submits an NPS survey response.
+        :return: A Future object wrapping the result of the API."""
+        return self.executor.submit(
+            self._api.submit_nps_response,
+            nps_response
         )
 
     def register_connection_status_subscriber(self, subscriber):
@@ -637,16 +656,10 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
         save_settings(Conflicts.resolve(setting_type, setting_attrs, new_value,
                                         settings))
 
-    def get_available_protocols(self) -> list:
-        """Returns an alphabetically sorted list of available protocol to use."""
-        available_protocols = self._connector.get_available_protocols_for_backend(
-            self.DEFAULT_BACKEND
-        )
+    def get_available_protocols(self, protocol_group: str) -> List[type[VPNConnection]]:
+        """Returns a list of available protocols sorted by priority."""
 
-        return sorted(
-            available_protocols,
-            key=lambda protocol: protocol.cls.ui_protocol
-        )
+        return list(self._connector.iter_available_protocols(protocol_group))
 
     def send_error_to_proton(
         self,
@@ -661,15 +674,14 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
         """Sends the error to Sentry."""
         self._api.usage_reporting.report_error(error)
 
-    def run_subprocess(self, commands: list, shell: bool = False) -> Future:
+    def run_subprocess(self, commands: list, check: bool = False) -> Future:
         """Run asynchronously subprocess command so it does not block UI."""
         return self.executor.submit(
             subprocess.run,
             commands,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            check=False,
-            shell=shell  # nosec B604
+            check=check,
         )
 
     @property
