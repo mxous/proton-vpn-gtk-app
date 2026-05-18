@@ -22,7 +22,7 @@ along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 from typing import Callable, Iterable, Optional, Set, Tuple
 
-from gi.repository import GObject
+from gi.repository import GLib, GObject
 
 from proton.vpn.app.gtk import Gtk
 from proton.vpn import logging
@@ -62,7 +62,7 @@ class FilteredList(Gtk.TreeView):
         self.set_model(Gtk.TreeModelSort(model=self._model))
 
         self.set_show_expanders(False)
-        self.set_activate_on_single_click(True)
+        self.set_activate_on_single_click(False)
 
         def select_function(
             _treeselection: Gtk.TreeSelection,
@@ -214,7 +214,20 @@ class SearchResults(Gtk.ScrolledWindow):
             "row-activated", self._on_row_activated
         )
 
+        # Preserve scroll position when the TreeView gains focus.
+        # When scrolling an unfocused list (e.g. scroll-inactive-window),
+        # GTK scrolls to the old cursor (row 0) on focus, causing a jump.
+        focus_controller = Gtk.EventControllerFocus()
+        focus_controller.connect("enter", self._on_tree_focus_enter)
+        self._filtered_country_list.add_controller(focus_controller)
+
         self._container.append(self._filtered_country_list)
+
+    def _on_tree_focus_enter(self, _controller):
+        """Restore scroll position after GTK's focus-triggered cursor scroll."""
+        vadj = self.get_vadjustment()
+        saved_value = vadj.get_value()
+        GLib.idle_add(lambda: vadj.set_value(saved_value))
 
     def _search_input_exists(  # pylint: disable=too-many-arguments
         self, search_text: Optional[str], server, entry_country_name: bool = False,

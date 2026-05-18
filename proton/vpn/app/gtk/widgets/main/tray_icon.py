@@ -285,7 +285,7 @@ class _StatusNotifierItem(dbus.service.Object):
             StatusNotifierItemProperty.TITLE.value: dbus.String(self.tray.title),
             StatusNotifierItemProperty.ICON_NAME.value: dbus.String(self.tray.icon_name),
             StatusNotifierItemProperty.MENU.value: dbus.ObjectPath(DBUSMENU_PATH),
-            StatusNotifierItemProperty.ITEM_IS_MENU.value: dbus.Boolean(True),
+            StatusNotifierItemProperty.ITEM_IS_MENU.value: dbus.Boolean(False),
             StatusNotifierItemProperty.ICON_ACCESSIBLE_DESCRIPTION.value: dbus.String(
                 self.tray.icon_desc
             ),
@@ -312,7 +312,7 @@ class _StatusNotifierItem(dbus.service.Object):
             StatusNotifierItemProperty.TITLE.value: dbus.String(self.tray.title),
             StatusNotifierItemProperty.ICON_NAME.value: dbus.String(self.tray.icon_name),
             StatusNotifierItemProperty.MENU.value: dbus.ObjectPath(DBUSMENU_PATH),
-            StatusNotifierItemProperty.ITEM_IS_MENU.value: dbus.Boolean(True),
+            StatusNotifierItemProperty.ITEM_IS_MENU.value: dbus.Boolean(False),
             StatusNotifierItemProperty.ICON_ACCESSIBLE_DESCRIPTION.value: dbus.String(
                 self.tray.icon_desc
             )

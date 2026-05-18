@@ -102,8 +102,8 @@ class QuickConnectWidget(Gtk.Box):
         self.disconnect_button.set_visible(True)
 
     def _on_connect_button_clicked(self, _):
-        logger.info("Connect to fastest server", category="ui.tray", event="connect")
-        future = self._controller.connect_to_fastest_server()
+        logger.info("Quick connect", category="ui.tray", event="connect")
+        future = self._controller.autoconnect()
         future.add_done_callback(lambda f: GLib.idle_add(f.result))  # bubble up exceptions if any.
 
     def _on_disconnect_button_clicked(self, _):

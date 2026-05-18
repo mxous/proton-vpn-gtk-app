@@ -161,6 +161,7 @@ class TrayIndicator:
             self._tray = TrayIcon()
             self._tray.setup()
 
+        self._tray.set_left_click(self._on_toggle_app_visibility_menu_entry_clicked)
         self.status_update(self._controller.current_connection_status)
         self._controller.register_connection_status_subscriber(self)
         self._set_main_window(main_window=main_window)
@@ -239,6 +240,10 @@ class TrayIndicator:
                                  self._on_connect_entry_clicked,
                                  self.enable_connect_entry,
                                  self.display_connect_entry)
+        self._tray.add_menu_item("Randomize",
+                                 self._on_randomize_entry_clicked,
+                                 self.enable_disconnect_entry,
+                                 self.display_disconnect_entry)
         self._tray.add_menu_item("Disconnect",
                                  self._on_disconnect_entry_clicked,
                                  self.enable_disconnect_entry,
@@ -272,9 +277,14 @@ class TrayIndicator:
         self._main_window.header_bar.menu.quit_button_click()
 
     def _on_connect_entry_clicked(self):
-        logger.info("Connect to fastest server", category="ui.tray", event="connect")
-        future = self._controller.connect_to_fastest_server()
+        logger.info("Quick connect", category="ui.tray", event="connect")
+        future = self._controller.autoconnect()
         future.add_done_callback(lambda f: GLib.idle_add(f.result))  # bubble up exceptions if any.
+
+    def _on_randomize_entry_clicked(self):
+        logger.info("Randomize server", category="ui.tray", event="randomize_server")
+        future = self._controller.connect_to_random_server()
+        future.add_done_callback(lambda f: GLib.idle_add(f.result))
 
     def _on_disconnect_entry_clicked(self):
         logger.info("Disconnect from VPN", category="ui.tray", event="disconnect")

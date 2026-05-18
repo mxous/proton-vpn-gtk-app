@@ -17,6 +17,8 @@ You should have received a copy of the GNU General Public License
 along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
 """
 from __future__ import annotations
+import random
+import re
 import subprocess  # nosec B404 # nosemgrep: gitlab.bandit.B404
 from concurrent.futures import Future
 from importlib import metadata
@@ -96,6 +98,9 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
         self._app_config = app_config
         self._cache_handler = cache_handler or CacheHandler(APP_CONFIG)
         self._settings_watchers = SettingsWatchers()
+        self._randomize_visited: set[str] = set()
+        self._randomize_city: Optional[str] = None
+        self._randomize_future: Optional[Future] = None
 
     async def initialize_vpn_connector(self):
         """
@@ -192,12 +197,13 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
 
     def autoconnect(self) -> Future:
         """Connects to a server from app configuration.
-            This method is intended to be called at app startup.
+            This method is intended to be called at app startup
+            and when the Quick Connect button is clicked.
+            Falls back to fastest server if no auto connect setting is configured.
         """
         connect_at_app_startup = self.get_app_configuration().connect_at_app_startup
 
-        # Temporary hack for parsing. Should be improved
-        if connect_at_app_startup == "FASTEST":
+        if not connect_at_app_startup or connect_at_app_startup == "FASTEST":
             return self.connect_to_fastest_server()
 
         return self._connect_to(connect_at_app_startup)
@@ -210,6 +216,10 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
         if "#" in connect_to:
             return self.connect_to_server(connect_to)
 
+        if "-" in connect_to:
+            _, city_name = connect_to.split("-", maxsplit=1)
+            return self.connect_to_city(city_name)
+
         return self.connect_to_country(connect_to)
 
     def connect_to_country(self, country_code: str) -> Future:
@@ -221,6 +231,135 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
         """
         server = self._api.server_list.get_fastest_in_country(country_code)
         return self._connect_to_vpn(server)
+
+    def connect_to_city(self, city_name: str) -> Future:
+        """
+        Establishes a VPN connection to the fastest server in the specified city.
+        :param city_name: The name of the city to connect to (e.g. "New York").
+        :return: A Future object that resolves once the connection reaches the
+        "connected" state.
+        """
+        server = self._api.server_list.get_fastest_in_city(city_name)
+        return self._connect_to_vpn(server)
+
+    MAX_SERVER_LOAD = 50
+
+    def connect_to_random_server(self) -> Future:
+        """
+        Connects to a random server in the same city as the current connection.
+        Avoids repeating servers already visited this session (per city).
+        Prefers servers with load below MAX_SERVER_LOAD.
+        Resets visit history when all servers have been visited or city changes.
+        Falls back to fastest server if not currently connected.
+        """
+        # Guard: if a randomize is already in flight, return the existing future
+        if self._randomize_future is not None and not self._randomize_future.done():
+            logger.debug("Randomize already in progress, ignoring duplicate call")
+            return self._randomize_future
+
+        current_server_id = self.current_server_id
+        if not current_server_id:
+            self._randomize_future = self.connect_to_fastest_server()
+            return self._randomize_future
+
+        current_server = self._api.server_list.get_by_id(current_server_id)
+        city = current_server.city
+        if not city:
+            self._randomize_future = self.connect_to_fastest_server()
+            return self._randomize_future
+
+        # Reset history if the city changed
+        if city != self._randomize_city:
+            self._randomize_visited.clear()
+            self._randomize_city = city
+
+        # Mark current server as visited
+        self._randomize_visited.add(current_server_id)
+
+        # Get all available servers in the same city
+        city_servers = list(ServerList.get_available_servers(
+            ServerList.get_servers_in_city(self._api.server_list.logicals, city),
+            self._api.server_list.user_tier
+        ))
+
+        # Exclude current and already-visited servers
+        unvisited = [s for s in city_servers if s.id not in self._randomize_visited]
+
+        # If all servers visited, reset history and allow all except current
+        if not unvisited:
+            self._randomize_visited.clear()
+            self._randomize_visited.add(current_server_id)
+            unvisited = [s for s in city_servers if s.id != current_server_id]
+
+        if not unvisited:
+            self._randomize_future = self.autoconnect()
+            return self._randomize_future
+
+        # Prefer low-load servers
+        low_load = [s for s in unvisited if s.load < self.MAX_SERVER_LOAD]
+        candidates_pool = low_load if low_load else unvisited
+
+        # Pre-select up to 3 candidates in the GTK thread (in-memory, before any disconnect)
+        num = min(3, len(candidates_pool))
+        candidates = random.sample(candidates_pool, num)
+
+        # Fetch protocol here (GTK thread) — same pattern as _connect_to_vpn.
+        # Doing it inside the coroutine would deadlock the executor loop.
+        protocol = self.get_settings().protocol
+
+        self._randomize_future = self.executor.submit(
+            self._randomize_with_retry, candidates, current_server_id, protocol
+        )
+        return self._randomize_future
+
+    async def _randomize_with_retry(
+        self,
+        candidates: list,
+        previous_server_id: str,
+        protocol: str,
+    ) -> None:
+        """
+        Tries each candidate server in order. Falls back to the previous server
+        if all candidates fail. Disconnects and raises if the fallback also fails.
+        """
+        for server in candidates:
+            try:
+                vpn_server = self._connector.get_vpn_server(
+                    server, self._api.refresher.client_config
+                )
+                logger.info(
+                    f"Randomize attempt: {server.name} (load: {server.load}%)",
+                    category="app", event="randomize_server"
+                )
+                await self._connector.connect(vpn_server, protocol=protocol)
+                self._randomize_visited.add(server.id)
+                return
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    f"Randomize: failed to connect to {server.name}, trying next"
+                )
+                self._randomize_visited.add(server.id)
+
+        # All candidates failed — try fallback to previous server
+        logger.warning(
+            "Randomize: all candidates failed, falling back to previous server"
+        )
+        try:
+            prev_server = self._api.server_list.get_by_id(previous_server_id)
+            vpn_server = self._connector.get_vpn_server(
+                prev_server, self._api.refresher.client_config
+            )
+            await self._connector.connect(vpn_server, protocol=protocol)
+            return
+        except Exception:  # noqa: BLE001
+            logger.error("Randomize: failed to reconnect to previous server")
+
+        # Everything failed — clean up state and disconnect
+        logger.error("Randomize: completely failed, disconnecting")
+        self._randomize_visited.clear()
+        self._randomize_city = None
+        await self._connector.disconnect()
+        raise RuntimeError("Failed to connect to any server during randomize")
 
     def connect_to_fastest_server(self) -> Future:
         """
@@ -259,6 +398,8 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
         :return: A Future object that resolves once the connection reaches the
         "disconnected" state.
         """
+        self._randomize_visited.clear()
+        self._randomize_city = None
         return self.executor.submit(self._connector.disconnect)
 
     @property

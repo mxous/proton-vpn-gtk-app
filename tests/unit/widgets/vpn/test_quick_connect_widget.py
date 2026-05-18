@@ -66,7 +66,7 @@ def test_quick_connect_widget_connects_to_fastest_server_when_connect_button_is_
     quick_connect_widget.connect_button.emit("clicked")
     process_gtk_events()
 
-    controller_mock.connect_to_fastest_server.assert_called_once()
+    controller_mock.autoconnect.assert_called_once()
 
 
 def test_quick_connect_widget_disconnects_from_current_server_when_disconnect_is_clicked():
