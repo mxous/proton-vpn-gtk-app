@@ -61,12 +61,13 @@ class ServerListWidget(Gtk.ScrolledWindow):
             vscrollbar_policy=Gtk.PolicyType.AUTOMATIC
         )
         self.set_propagate_natural_width(True)
+        self.set_name("server-list-widget")
+        self.set_overlay_scrolling(False)
 
         # pylint: disable=duplicate-code
         self._container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self._container.set_name("server-list-widget-container")
         self._container.set_vexpand(True)
-        self._container.set_margin_end(10)  # Leave space for the scroll bar.
         self._container.set_spacing(5)
         self.set_child(self._container)
 
@@ -86,15 +87,6 @@ class ServerListWidget(Gtk.ScrolledWindow):
         self._controller.set_server_list_updated_callback(self._on_server_list_update)
         self._controller.set_server_loads_updated_callback(self._on_server_loads_update)
         self.emit("ui-updated")
-
-    def connection_status_update(self, connection_status):
-        """
-        This method is called by VPNWidget whenever the VPN connection status changes.
-        Important: as this method is always called from another thread, we need
-        to make sure that any resulting actions are passed to the main thread
-        running GLib's main loop with GLib.idle_add.
-        """
-        # Not implemented
 
     def focus_on_entry(self, _widget, name_to_search: str) -> None:
         """Searches for an entry by name and either connects to it directly,

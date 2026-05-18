@@ -31,6 +31,7 @@ from proton.vpn.app.gtk.controller import Controller
 from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.location_row import LocationRow
 from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.expandable_row import ExpandableRow
 from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.row_view_model import RowViewModel
+from proton.vpn.app.gtk.utils.assertions import runtime_assert
 from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.utils \
     import get_children, make_connect_callback, sync_rows_with_model_items
 from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.secure_core_row import SecureCoreRow
@@ -92,8 +93,12 @@ class CountryRow(Gtk.Box):
             smart_routing=country.smart_routing,
             toggable=True,
             upgrade_required=upgrade_required,
-            icon=CountryFlagIcon(country.code),
-            connect_button_tooltip=f"Connect to {country.name}",
+            icon_factory=lambda c=country: CountryFlagIcon(c.code),
+            connect_button_tooltip=(
+                f"Upgrade to connect to {country.name}"
+                if upgrade_required else
+                f"Connect to {country.name}"
+            ),
             toggle_button_tooltips=(
                 f"Show all locations from {country.name}",
                 f"Hide all locations from {country.name}",
@@ -152,6 +157,7 @@ class CountryRow(Gtk.Box):
     @property
     def locations(self) -> List[Location]:
         """Returns the list of locations in the country."""
+        runtime_assert(self._country is not None, "Country is not set")
         return self._country.locations
 
     @property
@@ -162,7 +168,7 @@ class CountryRow(Gtk.Box):
     @property
     def secure_core_row(self) -> Optional[SecureCoreRow]:
         """Returns the secure core row currently displayed."""
-        return self._secure_core_row_container.get_first_child()
+        return cast(Optional[SecureCoreRow], self._secure_core_row_container.get_first_child())
 
     def click_toggle_button(self):
         """Simulates a click on the toggle button to expand/collapse the row."""
@@ -182,6 +188,8 @@ class CountryRow(Gtk.Box):
 
     def _add_secure_core_row(self, expanded: bool = False):
         """Adds the single Via Secure Core row when the country has secure core servers."""
+        runtime_assert(self._country is not None, "Country is not set")
+
         def display_secure_core_row(secure_core_row, secure_core_group):
             secure_core_row.display(
                 self._controller, secure_core_group, self._user_tier,
@@ -203,6 +211,7 @@ class CountryRow(Gtk.Box):
             expanded_locations: Optional set of lowercase location names that should be expanded
         """
         expanded_locations = expanded_locations or set()
+        runtime_assert(self._country is not None, "Country is not set")
 
         locations = self._country.locations
         if self._user_tier == TierEnum.FREE and self._country.free:

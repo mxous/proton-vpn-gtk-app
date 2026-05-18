@@ -1,0 +1,116 @@
+#server-list-widget #server-load levelbar#server-load-bar trough {
+    min-height: 6px;
+    border-radius: 3px;
+    border: none;
+    background-color: @background-strong;
+    padding: 0;
+}
+
+#server-list-widget #server-load levelbar#server-load-bar trough block {
+    min-height: 6px;
+    border-radius: 3px;
+    border: none;
+}
+
+#server-list-widget #server-load levelbar#server-load-bar trough block.empty {
+    background-color: transparent;
+}
+
+#server-list-widget #server-load levelbar#server-load-bar.signal-success trough block.filled {
+    background-color: @signal-success;
+}
+
+#server-list-widget #server-load levelbar#server-load-bar.signal-warning trough block.filled {
+    background-color: @signal-warning;
+}
+
+#server-list-widget #server-load levelbar#server-load-bar.signal-danger trough block.filled {
+    background-color: @signal-danger;
+}
+
+#server-list-widget .row-content {
+    /* Keep row height consistent whether showing connect button or upgrade link */
+    min-height: 32px;
+    /* Leave space for the scrollbar */
+    margin-right: 18px;
+}
+
+#server-list-widget #server-list-header-row {
+    /* Leave space for the scrollbar */
+    margin-right: 18px;
+}
+
+/* Avoid flag shifts right when row button is displayed */
+#server-list-widget #server-list-header-row,
+#server-list-widget .row-leave-box,
+#server-list-widget .row-content button.connect-button {
+    padding-left: 8px;
+}
+
+#server-list-widget {
+    /* Add padding to the right for consistency with the padding-left
+    added to avoid the flag shifting right when row button is displayed */
+    padding-right: 8px;
+}
+
+#server-list-widget .row-content button.connect-button {
+    border: 0;
+}
+
+#server-list-widget .row-content button.connect-button .connect-action-label {
+    font-weight: bold;
+}
+
+#server-list-widget .row-content button.toggle-button:focus-visible,
+#server-list-widget .row-content button.connect-button:focus-visible {
+    outline-color: @interaction-norm;
+}
+
+#server-list-widget .row-content button.connect-button:hover,
+#server-list-widget .row-content button.toggle-button:hover {
+    background-color: @interaction-default-hover;
+    background-image: image(@interaction-default-hover);
+}
+
+#server-list-widget .row-content button.connect-button:active,
+#server-list-widget .row-content button.toggle-button:active {
+    background-color: @interaction-default-active;
+    background-image: image(@interaction-default-active);
+}
+
+/* Dim the leave-child content when upgrade is required.
+   The hover child (connect/upgrade button) and toggle button are unaffected. */
+#server-list-widget .row-content.dimmed .row-leave-box {
+    opacity: 0.55;
+}
+
+#feature-legend-popover {
+    padding: 0;
+}
+
+#feature-legend-popover .feature-legend-header {
+    margin: 6px 10px;
+    border-spacing: 6px;
+}
+
+#feature-legend-popover .feature-legend-content {
+    margin: 0 10px 10px 10px;
+    padding-top: 2px;
+    border-spacing: 10px;
+}
+
+#feature-legend-popover .feature-legend-row {
+    border-spacing: 6px;
+}
+
+#feature-legend-popover .feature-legend-icon {
+    margin-top: 3px;
+}
+
+#feature-legend-popover .feature-legend-learn-more {
+    padding: 0;
+}
+
+#server-list-widget #server-list-header-row {
+    border-spacing: 10px;
+}

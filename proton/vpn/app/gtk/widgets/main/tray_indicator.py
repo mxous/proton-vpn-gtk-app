@@ -20,7 +20,6 @@ You should have received a copy of the GNU General Public License
 along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
 """
 from typing import Optional
-from os import environ
 from gi.repository import GLib, Gio
 
 from proton.vpn import logging
@@ -28,18 +27,9 @@ from proton.vpn.connection import states
 from proton.vpn.app.gtk.assets.icons import ICONS_PATH
 from proton.vpn.app.gtk.controller import Controller
 from proton.vpn.app.gtk.widgets.main.main_window import MainWindow
-from proton.vpn.app.gtk.widgets.main.tray_icon import TrayIcon
+from proton.vpn.app.gtk.widgets.main.tray_icon import TrayIcon, SNW_BUS_NAME
 
 logger = logging.getLogger(__name__)
-
-
-# See: https://mail.gnome.org/archives/gnome-shell-list/2017-October/msg00034.html
-UBUNTU_INDICATOR_EXTENSION = "ubuntu-appindicators@ubuntu.com"
-DEFAULT_INDICATOR_EXTENSION = "appindicatorsupport@rgcjonas.gmail.com"
-
-# See: /usr/share/dbus-1/interfaces/org.gnome.Shell.Extensions.xml
-# Active: extension is currently running
-ACTIVE_STATE = 1.0
 
 
 class TrayIndicatorNotSupported(Exception):
@@ -47,55 +37,40 @@ class TrayIndicatorNotSupported(Exception):
     missing runtime libraries."""
 
 
-class GnomeTrayDetection:
-    """Handles detection of gnome environment and required tray dependencies """
-    def is_gnome_shell_running(self) -> bool:
-        """Checks if gnome shell is running.
-        Flatpaks can't list gnome shell extensions by default,
-        and opening a sandbox hole would allow installing extensions,
-        so assume the tray works as any errors are not fatal.
-        """
-        if "FLATPAK_ID" in environ:
-            logger.warning("Detected Flatpak environment.")
-            return False
-        current_desktop_environment = environ.get("XDG_CURRENT_DESKTOP", "").lower()
-        return "gnome" in current_desktop_environment
+# pylint: disable=too-few-public-methods
+class TrayAvailabilityDetection:
+    """Handles checking for tray availability"""
+    def is_tray_available(self, timeout_ms: int = 300) -> bool:
+        """Return True if the StatusNotifierWatcher D-Bus service is running.
 
-    def _gnome_shell_list_extensions(self, timeout_ms: int = 300) -> Optional[dict[str, dict]]:
+        The SNI watcher (org.kde.StatusNotifierWatcher) is registered on the
+        session bus by whichever component provides system-tray support: the
+        ubuntu-appindicators / appindicatorsupport GNOME extension host, KDE's
+        plasma-workspace, XFCE's statusnotifier plugin, etc.  Its presence is
+        therefore a direct, DE-agnostic signal that AppIndicators will work.
+        """
         try:
             bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-            proxy = Gio.DBusProxy.new_sync(
+            dbus = Gio.DBusProxy.new_sync(
                 bus,
-                Gio.DBusProxyFlags.NONE,
+                Gio.DBusProxyFlags.DO_NOT_LOAD_PROPERTIES,
                 None,
-                "org.gnome.Shell.Extensions",
-                "/org/gnome/Shell/Extensions",
-                "org.gnome.Shell.Extensions",
+                "org.freedesktop.DBus",
+                "/org/freedesktop/DBus",
+                "org.freedesktop.DBus",
                 None,
             )
-            value = proxy.call_sync(
-                "ListExtensions",
-                None,
+            (has_owner,) = dbus.call_sync(
+                "NameHasOwner",
+                GLib.Variant("(s)", (SNW_BUS_NAME,)),
                 Gio.DBusCallFlags.NONE,
                 timeout_ms,
-                None
-            )
-            data = value.unpack()
-            return data[0] if isinstance(data, tuple) else data
+                None,
+            ).unpack()
+            return bool(has_owner)
         except GLib.Error:
-            logger.exception("Unable to list Gnome extensions")
-            return None
-
-    def is_extension_active(self) -> bool:
-        """Checks if either of the app indicator extensions is available and enabled."""
-        gnome_extensions = self._gnome_shell_list_extensions()
-        if gnome_extensions is None:
+            logger.exception("Unable to check for StatusNotifierWatcher")
             return False
-        for extension_name in [UBUNTU_INDICATOR_EXTENSION, DEFAULT_INDICATOR_EXTENSION]:
-            extension = gnome_extensions.get(extension_name)
-            if extension and extension.get("state") == ACTIVE_STATE:
-                return True
-        return False
 
 
 # pylint: disable=too-few-public-methods too-many-instance-attributes
@@ -135,8 +110,7 @@ class TrayIndicator:
         self,
         controller: Controller,
         tray_icon=None,
-        app_indicator_available=False,
-        gnome_tray_detection=GnomeTrayDetection()
+        tray_availability_detection=TrayAvailabilityDetection()
     ):
         self._tray = tray_icon
         self._main_window: Optional[MainWindow] = None
@@ -145,42 +119,38 @@ class TrayIndicator:
         self.enable_disconnect_entry = None
         self.enable_connect_entry = None
         self.display_pinned_servers = None
-
-        self._app_indicator_available = app_indicator_available
+        self._tray_availability_detection = tray_availability_detection
         self._controller = controller
-        self._gnome_tray_detection = gnome_tray_detection
 
     def setup(self, main_window: MainWindow):
         """Configure tray if not created yet and register all necessary callbacks.
         If extensions are disabled, a `TrayIndicatorNotSupported` exception is raised.
         """
-        if not self._can_tray_be_used():
+        if not self._tray_availability_detection.is_tray_available():
             raise TrayIndicatorNotSupported("Tray can not be used")
 
         if self._tray is None:
             self._tray = TrayIcon()
             self._tray.setup()
+            logger.info("Tray enabled")
 
         self._tray.set_left_click(self._on_toggle_app_visibility_menu_entry_clicked)
         self.status_update(self._controller.current_connection_status)
         self._controller.register_connection_status_subscriber(self)
         self._set_main_window(main_window=main_window)
 
-    def _can_tray_be_used(self):
-        # If gnome shell is not running then it's another DE and
-        # we assume tray works by default.
-        if self._gnome_tray_detection.is_gnome_shell_running():
-            self._app_indicator_available |= self._gnome_tray_detection.is_extension_active()
-        else:
-            self._app_indicator_available = True
-            logger.warning("Tray icon enabled on an unsupported desktop environment")
-
-        return self._app_indicator_available
+    def is_setup(self) -> bool:
+        """Returns whether this instance was already setup or not"""
+        return bool(self._tray)
 
     def _set_main_window(self, main_window: MainWindow):
         """Sets the main window for the tray indicator."""
         self._main_window = main_window
         self._build_menu()
+
+        self._main_window.connect(
+            "notify::visible", self._on_main_window_visibility_changed
+        )
 
         self._main_window.main_widget.login_widget.connect(
             "user-logged-in", self._on_user_logged_in
@@ -210,7 +180,8 @@ class TrayIndicator:
         self._tray.menu_items.clear()
 
         self._setup_connection_handler_entries()
-        self._tray.add_menu_separator()
+        if self._tray.menu_items:
+            self._tray.add_menu_separator()
 
         if self._controller.user_logged_in:
             self.display_pinned_servers = True
@@ -236,18 +207,23 @@ class TrayIndicator:
         self._tray.add_menu_separator()
 
     def _setup_connection_handler_entries(self):
-        self._tray.add_menu_item("Quick Connect",
-                                 self._on_connect_entry_clicked,
-                                 self.enable_connect_entry,
-                                 self.display_connect_entry)
-        self._tray.add_menu_item("Randomize",
-                                 self._on_randomize_entry_clicked,
-                                 self.enable_disconnect_entry,
-                                 self.display_disconnect_entry)
-        self._tray.add_menu_item("Disconnect",
-                                 self._on_disconnect_entry_clicked,
-                                 self.enable_disconnect_entry,
-                                 self.display_disconnect_entry)
+        if self.display_connect_entry:
+            self._tray.add_menu_item(
+                "Quick Connect",
+                self._on_connect_entry_clicked,
+                self.enable_connect_entry,
+            )
+        if self.display_disconnect_entry:
+            self._tray.add_menu_item(
+                "Randomize",
+                self._on_randomize_entry_clicked,
+                self.enable_disconnect_entry,
+            )
+            self._tray.add_menu_item(
+                "Disconnect",
+                self._on_disconnect_entry_clicked,
+                self.enable_disconnect_entry,
+            )
 
     def _setup_main_window_visibility_toggle_entry(self):
         toggle_label = "Show" if not self._main_window.get_visible() else "Hide"
@@ -271,6 +247,9 @@ class TrayIndicator:
         else:
             self._main_window.set_visible(True)
             self._main_window.present()
+        self._update()
+
+    def _on_main_window_visibility_changed(self, *_):
         self._update()
 
     def _on_exit_app_menu_entry_clicked(self, *_):

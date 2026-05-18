@@ -29,6 +29,7 @@ from proton.vpn.app.gtk.controller import Controller
 from proton.vpn.session.dataclasses.servers import SecureCoreGroup
 from proton.vpn.session.servers import LogicalServer, TierEnum
 
+from proton.vpn.app.gtk.utils.assertions import runtime_assert
 from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.expandable_row import ExpandableRow
 from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.row_content import RowContent
 from proton.vpn.app.gtk.widgets.vpn.serverlist.city_view.row_view_model import RowViewModel
@@ -71,12 +72,16 @@ class SecureCoreRow(Gtk.Box):
         self._expandable_row.reset(keep_children=False)
         self._expandable_row.connect_toggle()
         exit_country_name = secure_core_group.servers[0].exit_country_name
-        connect_button_tooltip = f"Connect to {exit_country_name} via Secure Core"
+        upgrade_required = user_tier == TierEnum.FREE and not secure_core_group.free
+        connect_button_tooltip = (
+            f"Upgrade to connect to {exit_country_name} via Secure Core"
+            if upgrade_required else
+            f"Connect to {exit_country_name} via Secure Core"
+        )
         toggle_button_tooltips = (
             f"Show all Secure Core servers\nto connect to {exit_country_name}",
             f"Hide all Secure Core servers\nto connect to {exit_country_name}"
         )
-        upgrade_required = user_tier == TierEnum.FREE and not secure_core_group.free
 
         row_data = RowViewModel(
             name=self.LABEL,
@@ -87,13 +92,18 @@ class SecureCoreRow(Gtk.Box):
             smart_routing=False,
             toggable=True,
             upgrade_required=upgrade_required,
-            icon=SecureCoreIcon(),
+            icon_factory=lambda: SecureCoreIcon(size=24),
             connect_button_tooltip=connect_button_tooltip,
             toggle_button_tooltips=toggle_button_tooltips,
         )
         self._expandable_row.row_content.display(row_data)
         if expanded:
             self._expandable_row.row_content.click_toggle_button()
+
+    @property
+    def row_content(self) -> RowContent:
+        """Returns the header row content widget."""
+        return self._expandable_row.row_content
 
     @property
     def server_rows(self) -> List[RowContent]:
@@ -120,6 +130,7 @@ class SecureCoreRow(Gtk.Box):
             server_row.reset()
 
     def _add_server_rows(self) -> None:
+        runtime_assert(self._secure_core_group is not None, "Secure core group is not set")
         # Capture controller directly to avoid closing over `self` in on_connect
         controller = self._controller
 
@@ -140,13 +151,17 @@ class SecureCoreRow(Gtk.Box):
                 smart_routing=False,
                 toggable=False,
                 upgrade_required=upgrade_required,
-                load=server.load,
-                icon=DoubleFlagIcon(
-                    exit_country_code=server.exit_country,
-                    entry_country_code=server.entry_country,
+                load=None if server.under_maintenance else server.load,
+                icon_factory=lambda s=server: DoubleFlagIcon(
+                    exit_country_code=s.exit_country,
+                    entry_country_code=s.entry_country,
                 ),
                 connect_button_tooltip=(
-                    f"Connect to {server.exit_country_name}\nvia {server.entry_country_name}"
+                    f"Upgrade to connect to {server.exit_country_name}"
+                    f" via {server.entry_country_name}"
+                    if upgrade_required else
+                    f"Connect to {server.exit_country_name}"
+                    f" via {server.entry_country_name}"
                 ),
             )
             server_row.display(row_data)

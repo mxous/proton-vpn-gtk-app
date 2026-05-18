@@ -19,6 +19,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
 """
+from contextlib import contextmanager
 from typing import List, Tuple, Callable, Any, Optional, TYPE_CHECKING, cast
 from gi.repository import Gtk, Gio
 
@@ -89,6 +90,16 @@ class BaseCategoryContainer(Gtk.Box):
         self.set_spacing(15)
 
         self.append(CategoryHeader(category_name))
+
+
+class BetaTag(Gtk.Label):
+    """A label styled with a purple border to indicate a beta feature."""
+    LABEL = "BETA"
+
+    def __init__(self):
+        super().__init__(label=self.LABEL)
+        self.add_css_class("beta-tag")
+        self.set_valign(Gtk.Align.CENTER)
 
 
 class UpgradePlusTag(Gtk.Button):
@@ -503,6 +514,16 @@ class ComboboxWidget(Gtk.Grid):  # pylint: disable=too-many-instance-attributes
             self._controller.user_tier
         )
 
+    @contextmanager
+    def pause_callback(self):
+        """Context manager that temporarily blocks the combobox 'changed' signal."""
+        handler = self._callback or self._on_combobox_change
+        self.combobox.handler_block_by_func(handler)
+        try:
+            yield
+        finally:
+            self.combobox.handler_unblock_by_func(handler)
+
     def _on_combobox_change(self, combobox: Gtk.ComboBox):
         model = combobox.get_model()
         treeiter = combobox.get_active_iter()
@@ -651,20 +672,9 @@ class EntryWidget(Gtk.Grid):
 
         entry.set_text(str(value))
         if self._callback:
-            focus_controller = Gtk.EventControllerFocus()
-            focus_controller.connect(
-                "leave",
-                lambda controller, *args: self._callback(entry, self, *args)
-            )
-            entry.add_controller(focus_controller)
+            entry.connect("changed", lambda *args: self._callback(entry, self, *args))
         else:
-            focus_controller = Gtk.EventControllerFocus()
-            focus_controller.connect(
-                "leave",
-                lambda controller, *args: self._on_focus_out_event(entry, *args)
-            )
-            entry.add_controller(focus_controller)
-
+            entry.connect("changed", self._on_changed_event)
         return entry
 
     def change_value(self, new_value: str):
@@ -692,7 +702,7 @@ class EntryWidget(Gtk.Grid):
         if self.description:
             self.attach(self.description, 0, 1, 2, 1)
 
-    def _on_focus_out_event(self, gtk_widget: Gtk.Entry, *_):
+    def _on_changed_event(self, gtk_widget: Gtk.Entry, *_):
         self.save_setting(gtk_widget.get_text())
 
     @property
