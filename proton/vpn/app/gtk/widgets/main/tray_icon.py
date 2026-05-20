@@ -377,6 +377,7 @@ class TrayIcon:  # pylint: disable=too-many-instance-attributes
         self.status = "Active"
 
         self.menu_items = []
+        self._next_menu_id = 1
         self.on_left_click = None
         self.on_middle_click = None
 
@@ -424,8 +425,18 @@ class TrayIcon:  # pylint: disable=too-many-instance-attributes
         )
 
     def _generate_menu_id(self):
-        """Generate an used to identify the item in the menu."""
-        return len(self.menu_items) + 1 if len(self.menu_items) > 0 else 1
+        """Generate a unique id for a menu item.
+
+        IDs are monotonically increasing across menu rebuilds. DBusMenu clients
+        (notably GNOME's AppIndicator extension) cache item properties by id and
+        don't reliably refresh `type` when an existing id is reused — reusing
+        ids after `menu_items.clear()` makes separators inherit the previous
+        "standard" type from whatever item held that id last, rendering as
+        blank rows instead of separator lines.
+        """
+        menu_id = self._next_menu_id
+        self._next_menu_id += 1
+        return menu_id
 
     def setup(self):
         """
