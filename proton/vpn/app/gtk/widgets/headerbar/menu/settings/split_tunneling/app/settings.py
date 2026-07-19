@@ -25,6 +25,7 @@ from gi.repository import Gtk
 from proton.vpn.core.settings.split_tunneling import SplitTunnelingMode
 
 from proton.vpn.app.gtk.controller import Controller
+from proton.vpn.app.gtk.utils.safe_signal_connect import safe_signal_connect
 from proton.vpn.app.gtk.widgets.headerbar.menu.settings.common import SettingName
 from proton.vpn.app.gtk.widgets.headerbar.menu.settings.split_tunneling.app.selected_app_list \
     import SelectedAppList
@@ -76,6 +77,7 @@ class AppBasedSplitTunnelingSettings(Gtk.Box):  # pylint: disable=too-many-insta
         self._mode_label = SettingName("")
         self._app_count_label = SettingName("")
         self._add_button = self._create_add_button()
+        self._add_app_window: Optional[AppSelectionWindow] = None
 
         mode_and_app_count_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         mode_and_app_count_box.set_halign(Gtk.Align.START)
@@ -90,29 +92,39 @@ class AppBasedSplitTunnelingSettings(Gtk.Box):  # pylint: disable=too-many-insta
         self._update_app_count_label()
 
         # We need to track whenever an app is removed or added to the list
-        self._selected_app_list.connect("app-removed", self._on_app_removed)
-        self._selected_app_list.connect("app-list-refreshed", self._on_app_list_refreshed)
+        safe_signal_connect(self._selected_app_list, "app-removed", self._on_app_removed)
+        safe_signal_connect(
+            self._selected_app_list, "app-list-refreshed", self._on_app_list_refreshed
+        )
 
     def _create_add_button(self) -> Gtk.Button:
         button = self.gtk.Button.new_with_label("Add")
         button.set_name("split-tunneling-app-add-button")
         button.add_css_class("secondary")
-        button.connect("clicked", self._on_clicked_add)
+        safe_signal_connect(button, "clicked", self._on_clicked_add)
         button.set_hexpand(True)
         button.set_halign(Gtk.Align.START)
 
         return button
 
     def _on_clicked_add(self, _: Gtk.Button):
-        add_app_window = AppSelectionWindow(
+        self._add_app_window = AppSelectionWindow(
             title=self._window_title,
             controller=self._controller,
             stored_apps=self._stored_apps,
             installed_apps=self._installed_apps
         )
 
-        add_app_window.connect("app-selection-completed", self._on_app_selection_completed)
-        add_app_window.present()
+        safe_signal_connect(
+            self._add_app_window, "app-selection-completed", self._on_app_selection_completed
+        )
+        safe_signal_connect(
+            self._add_app_window, "unrealize", self._on_add_app_window_unrealize
+        )
+        self._add_app_window.present()
+
+    def _on_add_app_window_unrealize(self, _):
+        self._add_app_window = None
 
     @property
     def _window_title(self) -> str:

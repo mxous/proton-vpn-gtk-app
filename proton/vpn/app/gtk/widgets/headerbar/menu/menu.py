@@ -31,6 +31,7 @@ from proton.vpn.app.gtk.widgets.headerbar.menu.about_dialog import AboutDialog
 from proton.vpn.app.gtk.widgets.main.confirmation_dialog import ConfirmationDialog
 from proton.vpn.app.gtk.controller import Controller
 from proton.vpn.app.gtk.widgets.main.loading_widget import OverlayWidget, DefaultLoadingWidget
+from proton.vpn.app.gtk.utils.safe_signal_connect import safe_signal_connect
 from proton.vpn.app.gtk.widgets.headerbar.menu.settings import SettingsWindow
 from proton.vpn.app.gtk.widgets.headerbar.menu.release_notes_dialog import ReleaseNotesDialog
 from proton.vpn.connection.enum import KillSwitchSetting as KillSwitchSettingEnum
@@ -89,6 +90,9 @@ class Menu(Gio.Menu):  # pylint: disable=too-many-instance-attributes
         self.append_item(Gio.MenuItem.new("Quit", "win.quit"))
 
         self._settings_window = None
+        self._bug_dialog = None
+        self._release_notes = None
+        self._dialog_callback = None
 
         self._setup_actions()
 
@@ -139,30 +143,34 @@ class Menu(Gio.Menu):  # pylint: disable=too-many-instance-attributes
         self._main_window.add_action(self.quit_action)
 
         # Connect actions to callbacks
-        self.bug_report_action.connect(
-            "activate", self._on_report_an_issue_clicked
+        safe_signal_connect(
+            self.bug_report_action, "activate", self._on_report_an_issue_clicked
         )
-        self.settings_action.connect(
-            "activate", self._on_settings_clicked
+        safe_signal_connect(
+            self.settings_action, "activate", self._on_settings_clicked
         )
-        self.release_notes_action.connect(
-            "activate", self._on_release_notes_clicked
+        safe_signal_connect(
+            self.release_notes_action, "activate", self._on_release_notes_clicked
         )
-        self.about_action.connect(
-            "activate", self._on_about_clicked
+        safe_signal_connect(
+            self.about_action, "activate", self._on_about_clicked
         )
-        self.logout_action.connect(
-            "activate", self._on_logout_clicked
+        safe_signal_connect(
+            self.logout_action, "activate", self._on_logout_clicked
         )
-        self.quit_action.connect(
-            "activate", self._on_quit_clicked
+        safe_signal_connect(
+            self.quit_action, "activate", self._on_quit_clicked
         )
 
     def _on_report_an_issue_clicked(self, *_):
-        bug_dialog = BugReportDialog(self._controller, self._main_window)
-        bug_dialog.set_transient_for(self._main_window)
-        bug_dialog.set_modal(True)
-        bug_dialog.present()
+        self._bug_dialog = BugReportDialog(self._controller, self._main_window)
+        self._bug_dialog.set_transient_for(self._main_window)
+        self._bug_dialog.set_modal(True)
+        safe_signal_connect(self._bug_dialog, "unrealize", self._on_bug_dialog_unrealize)
+        self._bug_dialog.present()
+
+    def _on_bug_dialog_unrealize(self, _):
+        self._bug_dialog = None
 
     def _on_settings_clicked(self,  *_):
         self._settings_window = SettingsWindow(
@@ -170,17 +178,20 @@ class Menu(Gio.Menu):  # pylint: disable=too-many-instance-attributes
             self._main_window.application.tray_indicator
         )
         self._settings_window.set_transient_for(self._main_window)
-
-        def on_unrealize(_):
-            self._settings_window = None
-
-        self._settings_window.connect("unrealize", on_unrealize)
+        safe_signal_connect(self._settings_window, "unrealize", self._on_unrealize)
         self._settings_window.present()
 
+    def _on_unrealize(self, _):
+        self._settings_window = None
+
     def _on_release_notes_clicked(self,  *_):
-        release_notes = ReleaseNotesDialog()
-        release_notes.set_transient_for(self._main_window)
-        release_notes.present()
+        self._release_notes = ReleaseNotesDialog()
+        self._release_notes.set_transient_for(self._main_window)
+        safe_signal_connect(self._release_notes, "unrealize", self._on_release_notes_unrealize)
+        self._release_notes.present()
+
+    def _on_release_notes_unrealize(self, _):
+        self._release_notes = None
 
     def _on_about_clicked(self, *_):
         about_dialog = AboutDialog()
@@ -285,16 +296,20 @@ class Menu(Gio.Menu):  # pylint: disable=too-many-instance-attributes
         dialog.set_transient_for(self._main_window)
         dialog.set_modal(True)
 
-        def on_dialog_response(dialog, response_id):
-            dialog.destroy()
-            self.logout_enabled = response_id in (
-                Gtk.ResponseType.NO, Gtk.ResponseType.DELETE_EVENT
-            )
-            result = response_id == Gtk.ResponseType.YES
-            callback(result)
-
-        dialog.connect("response", on_dialog_response)
+        self._dialog_callback = callback
+        safe_signal_connect(dialog, "response", self._on_dialog_response)
         dialog.present()
+
+    def _on_dialog_response(self, dialog, response_id):
+        dialog.destroy()
+        self.logout_enabled = response_id in (
+            Gtk.ResponseType.NO, Gtk.ResponseType.DELETE_EVENT
+        )
+        result = response_id == Gtk.ResponseType.YES
+
+        if self._dialog_callback is not None:
+            self._dialog_callback(result)
+            self._dialog_callback = None
 
     def bug_report_button_click(self):
         """Clicks the bug report menu entry."""
