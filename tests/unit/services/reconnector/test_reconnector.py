@@ -28,6 +28,7 @@ from proton.vpn.core.refresher import VPNDataRefresher
 from proton.vpn.app.gtk.services.reconnector.network_monitor import NetworkMonitor
 from proton.vpn.app.gtk.services.reconnector.reconnector import VPNReconnector
 from proton.vpn.app.gtk.services.reconnector.session_monitor import SessionMonitor
+from proton.vpn.app.gtk.services.reconnector.sleep_monitor import SleepMonitor
 from proton.vpn.app.gtk.services.reconnector.vpn_monitor import VPNMonitor
 from proton.vpn.app.gtk.utils.executor import AsyncExecutor
 from tests.unit.testing_utils import process_gtk_events
@@ -63,11 +64,17 @@ def session_monitor():
     return Mock(SessionMonitor)
 
 
+@pytest.fixture
+def sleep_monitor():
+    return Mock(SleepMonitor)
+
+
 def test_enable_enables_vpn_and_network_and_session_monitors(
-        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor, sleep_monitor
 ):
     reconnector = VPNReconnector(
-        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor,
+        session_monitor, async_executor, sleep_monitor
     )
 
     reconnector.enable()
@@ -75,10 +82,11 @@ def test_enable_enables_vpn_and_network_and_session_monitors(
     vpn_monitor.enable.assert_called_once()
     network_monitor.enable.assert_called_once()
     session_monitor.enable.assert_called_once()
+    sleep_monitor.enable.assert_called_once()
 
 
 def test_enable_raises_runtime_error_if_vpn_data_refresher_is_not_ready(
-        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor, sleep_monitor
 ):
     """
     The reconnector retrieves the server list and the client configuration
@@ -88,7 +96,8 @@ def test_enable_raises_runtime_error_if_vpn_data_refresher_is_not_ready(
     and/or the client configuration yet.
     """
     reconnector = VPNReconnector(
-        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor,
+        session_monitor, async_executor, sleep_monitor
     )
 
     vpn_data_refresher.is_vpn_data_ready = False
@@ -98,10 +107,11 @@ def test_enable_raises_runtime_error_if_vpn_data_refresher_is_not_ready(
 
 
 def test_disable_disables_vpn_and_network_and_session_monitors(
-        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor, sleep_monitor
 ):
     reconnector = VPNReconnector(
-        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor,
+        session_monitor, async_executor, sleep_monitor
     )
 
     reconnector.disable()
@@ -109,14 +119,16 @@ def test_disable_disables_vpn_and_network_and_session_monitors(
     vpn_monitor.disable.assert_called_once()
     network_monitor.disable.assert_called_once()
     session_monitor.disable.assert_called_once()
+    sleep_monitor.disable.assert_called_once()
 
 
 def test_did_vpn_drop_returns_false_if_there_is_not_a_vpn_connection(
-        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor, sleep_monitor
 ):
     vpn_connector.current_connection = None
     reconnector = VPNReconnector(
-        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor,
+        session_monitor, async_executor, sleep_monitor
     )
 
     assert not reconnector.did_vpn_drop
@@ -127,11 +139,12 @@ def test_did_vpn_drop_returns_false_if_there_is_not_a_vpn_connection(
 ])
 def test_did_vpn_drop_returns_true_only_if_the_current_connection_state_is_error(
         state,
-        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor, sleep_monitor
 ):
     vpn_connector.current_state = state
     reconnector = VPNReconnector(
-        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor,
+        session_monitor, async_executor, sleep_monitor
     )
 
     expected_result = isinstance(state, states.Error)
@@ -145,10 +158,11 @@ def test_did_vpn_drop_returns_true_only_if_the_current_connection_state_is_error
 ])
 def test_schedule_reconnection_is_called_once_network_connectivity_is_detected_only_if_vpn_connection_dropped_and_connection_error_is_not_fatal(
         did_vpn_drop, is_connection_error_fatal, scheduled_reconnection_expected,
-        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor, sleep_monitor
 ):
     reconnector = VPNReconnector(
-        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor,
+        session_monitor, async_executor, sleep_monitor
     )
 
     with patch.object(VPNReconnector, "did_vpn_drop", new_callable=PropertyMock) as did_vpn_drop_patch, \
@@ -172,10 +186,11 @@ def test_schedule_reconnection_is_called_once_network_connectivity_is_detected_o
 ])
 def test_schedule_reconnection_is_called_once_user_session_is_unlocked_only_if_vpn_connection_dropped_and_connection_error_is_not_fatal(
         did_vpn_drop, is_connection_error_fatal, scheduled_reconnection_expected,
-        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor, sleep_monitor
 ):
     reconnector = VPNReconnector(
-        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor,
+        session_monitor, async_executor, sleep_monitor
     )
 
     with patch.object(VPNReconnector, "did_vpn_drop", new_callable=PropertyMock) as did_vpn_drop_patch, \
@@ -194,12 +209,13 @@ def test_schedule_reconnection_is_called_once_user_session_is_unlocked_only_if_v
 @patch("proton.vpn.app.gtk.services.reconnector.reconnector.GLib")
 def test_schedule_reconnection_only_schedule_a_reconnection_if_there_is_not_one_already_scheduled(
     glib_mock,
-    vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+    vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor, sleep_monitor
 ):
     glib_mock.timeout_add_seconds.return_value = 1
 
     reconnector = VPNReconnector(
-        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor,
+        session_monitor, async_executor, sleep_monitor
     )
 
     reconnection_scheduled = reconnector.schedule_reconnection()
@@ -213,10 +229,11 @@ def test_schedule_reconnection_only_schedule_a_reconnection_if_there_is_not_one_
 
 
 def test_on_vpn_drop_raises_exception_on_authentication_denied_error(
-    vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+    vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor, sleep_monitor
 ):
     VPNReconnector(
-        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor,
+        session_monitor, async_executor, sleep_monitor
     )
 
     # Set current VPN state to authentication denied error, currently considered as a fatal error.
@@ -236,12 +253,13 @@ def test_on_vpn_drop_raises_exception_on_authentication_denied_error(
 @patch("proton.vpn.app.gtk.services.reconnector.reconnector.GLib")
 def test_on_vpn_drop_a_reconnection_attempt_is_scheduled_with_an_exponential_backoff_delay(
     glib_mock, random_mock,
-    vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+    vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor, sleep_monitor
 ):
     """After each reconnection attempt, the backoff delay should increase
     exponentially."""
     VPNReconnector(
-        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor,
+        session_monitor, async_executor, sleep_monitor
     )
     vpn_connector.current_state = states.Error()
 
@@ -276,7 +294,7 @@ def test_on_vpn_drop_a_reconnection_attempt_is_scheduled_with_an_exponential_bac
 def test_reconnection_is_rescheduled_if_connection_error_is_not_fatal_when_network_is_down_or_session_is_locked(
     glib_mock, random_mock,
     is_network_up, is_session_unlocked,
-    vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+    vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor, sleep_monitor
 ):
     """
     The requirements for a reconnection attempt are:
@@ -286,7 +304,8 @@ def test_reconnection_is_rescheduled_if_connection_error_is_not_fatal_when_netwo
     and it should be rescheduled instead. This is what's tested by this test.
     """
     VPNReconnector(
-        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor,
+        session_monitor, async_executor, sleep_monitor
     )
 
     # Set current VPN state to a non fatal error.
@@ -326,13 +345,14 @@ def test_reconnection_is_rescheduled_if_connection_error_is_not_fatal_when_netwo
 @patch("proton.vpn.app.gtk.services.reconnector.reconnector.GLib")
 def test_on_vpn_up_resets_retry_counter_and_removes_pending_scheduled_attempt(
         glib_mock, random_mock,
-        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor, sleep_monitor
 ):
     """After the VPN connection has been restored, the retry counter that
     increases the backoff delay should be reset, and if there is a pending
     scheduled reconnection attempt then it should be unscheduled."""
     reconnector = VPNReconnector(
-        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor,
+        session_monitor, async_executor, sleep_monitor
     )
 
     glib_mock.timeout_add_seconds.return_value = 1
@@ -362,14 +382,122 @@ def test_on_vpn_up_resets_retry_counter_and_removes_pending_scheduled_attempt(
 
 
 def test_on_vpn_drop_trigger_force_refresh_after_expired_certificate_event_is_received(
-    vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+    vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor, sleep_monitor
 ):
     event = events.ExpiredCertificate()
 
     VPNReconnector(
-        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor, session_monitor, async_executor
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor,
+        session_monitor, async_executor, sleep_monitor
     )
 
     vpn_monitor.vpn_drop_callback(event)
 
     async_executor.submit.assert_called_with(vpn_data_refresher.force_refresh_certificate)
+
+
+@pytest.mark.parametrize("state, schedule_expected", [
+    (states.Connected(), True),
+    (states.Error(context=states.StateContext(event=events.Timeout(context=None))), True),
+    (states.Error(context=states.StateContext(event=events.AuthDenied(context=None))), False),
+    (states.Disconnected(), False),
+    (states.Disconnecting(), False),
+])
+def test_on_resume_schedules_reconnection_only_if_connected_or_recoverable_error(
+        state, schedule_expected,
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor,
+        session_monitor, async_executor, sleep_monitor
+):
+    reconnector = VPNReconnector(
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor,
+        session_monitor, async_executor, sleep_monitor
+    )
+    reconnector.randomize_callback = Mock()
+    vpn_connector.current_state = state
+
+    with patch.object(VPNReconnector, "schedule_reconnection"):
+        # Simulate system resume from suspend.
+        sleep_monitor.resumed_callback()
+
+        assert reconnector.schedule_reconnection.called is schedule_expected
+
+
+def test_on_resume_does_nothing_if_randomize_callback_is_not_set(
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor,
+        session_monitor, async_executor, sleep_monitor
+):
+    reconnector = VPNReconnector(
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor,
+        session_monitor, async_executor, sleep_monitor
+    )
+    vpn_connector.current_state = states.Connected()
+
+    with patch.object(VPNReconnector, "schedule_reconnection"):
+        sleep_monitor.resumed_callback()
+
+        reconnector.schedule_reconnection.assert_not_called()
+
+
+def test_on_resume_resets_retry_counter(
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor,
+        session_monitor, async_executor, sleep_monitor
+):
+    reconnector = VPNReconnector(
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor,
+        session_monitor, async_executor, sleep_monitor
+    )
+    reconnector.randomize_callback = Mock()
+    vpn_connector.current_state = states.Connected()
+    reconnector.retry_counter = 5
+
+    with patch.object(VPNReconnector, "schedule_reconnection"):
+        sleep_monitor.resumed_callback()
+
+    assert reconnector.retry_counter == 0
+
+
+@patch("proton.vpn.app.gtk.services.reconnector.reconnector.GLib")
+def test_reconnect_uses_randomize_callback_when_set(
+        glib_mock,
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor,
+        session_monitor, async_executor, sleep_monitor
+):
+    reconnector = VPNReconnector(
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor,
+        session_monitor, async_executor, sleep_monitor
+    )
+    reconnector.randomize_callback = Mock()
+    network_monitor.is_network_up = True
+    session_monitor.is_session_unlocked = True
+
+    reconnector.schedule_reconnection()
+    _, reconnect_func = glib_mock.timeout_add.call_args_list[0].args
+
+    # Simulate GLib running the scheduled reconnection attempt.
+    reconnect_func()
+
+    reconnector.randomize_callback.assert_called_once()
+    async_executor.submit.assert_not_called()
+
+
+@patch("proton.vpn.app.gtk.services.reconnector.reconnector.GLib")
+def test_reconnect_falls_back_to_same_server_when_randomize_callback_is_not_set(
+        glib_mock,
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor,
+        session_monitor, async_executor, sleep_monitor
+):
+    reconnector = VPNReconnector(
+        vpn_connector, vpn_data_refresher, vpn_monitor, network_monitor,
+        session_monitor, async_executor, sleep_monitor
+    )
+    network_monitor.is_network_up = True
+    session_monitor.is_session_unlocked = True
+
+    reconnector.schedule_reconnection()
+    _, reconnect_func = glib_mock.timeout_add.call_args_list[0].args
+
+    reconnect_func()
+
+    # The same-server path submits vpn_connector.connect to the executor.
+    async_executor.submit.assert_called_once()
+    assert async_executor.submit.call_args.args[0] is vpn_connector.connect

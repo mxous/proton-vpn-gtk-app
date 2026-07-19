@@ -20,7 +20,7 @@ You should have received a copy of the GNU General Public License
 along with ProtonVPN.  If not, see <https://www.gnu.org/licenses/>.
 """
 import random
-from typing import Optional
+from typing import Callable, Optional
 
 from gi.repository import GLib
 from proton.vpn.core.refresher import VPNDataRefresher
@@ -33,6 +33,7 @@ from proton.vpn.core.vpnconnector import VPNConnector
 
 from proton.vpn.app.gtk.services.reconnector.network_monitor import NetworkMonitor
 from proton.vpn.app.gtk.services.reconnector.session_monitor import SessionMonitor
+from proton.vpn.app.gtk.services.reconnector.sleep_monitor import SleepMonitor
 from proton.vpn.app.gtk.services.reconnector.vpn_monitor import VPNMonitor
 from proton.vpn.app.gtk.utils.executor import AsyncExecutor
 
@@ -59,7 +60,8 @@ class VPNReconnector:  # pylint: disable=too-many-instance-attributes
             vpn_monitor: VPNMonitor,
             network_monitor: NetworkMonitor,
             session_monitor: SessionMonitor,
-            async_executor: AsyncExecutor
+            async_executor: AsyncExecutor,
+            sleep_monitor: SleepMonitor
     ):
         self._vpn_connector = vpn_connector
         self._vpn_data_refresher = vpn_data_refresher
@@ -74,6 +76,11 @@ class VPNReconnector:  # pylint: disable=too-many-instance-attributes
 
         self._session_monitor = session_monitor or SessionMonitor()
         self._session_monitor.session_unlocked_callback = self._on_session_unlocked
+
+        self._sleep_monitor = sleep_monitor
+        self._sleep_monitor.resumed_callback = self._on_resume
+
+        self.randomize_callback: Optional[Callable] = None
 
         self._executor = async_executor
 
@@ -94,6 +101,7 @@ class VPNReconnector:  # pylint: disable=too-many-instance-attributes
         self._vpn_monitor.enable()
         self._network_monitor.enable()
         self._session_monitor.enable()
+        self._sleep_monitor.enable()
         logger.info("VPN reconnector enabled.")
 
     def disable(self):
@@ -101,6 +109,7 @@ class VPNReconnector:  # pylint: disable=too-many-instance-attributes
         self._vpn_monitor.disable()
         self._network_monitor.disable()
         self._session_monitor.disable()
+        self._sleep_monitor.disable()
         logger.info("VPN reconnector disabled.")
 
     @property
@@ -178,6 +187,36 @@ class VPNReconnector:  # pylint: disable=too-many-instance-attributes
 
         self.schedule_reconnection()
 
+    def _on_resume(self):
+        """
+        Callback called by the sleep monitor once the system has resumed
+        from suspend.
+
+        A suspend breaks all TCP connections and can leave the tunnel stale
+        without the VPN monitor ever detecting a drop, so a reconnection to
+        a randomized server is scheduled whenever a connection exists.
+        The scheduled reconnection (rather than an immediate one) is reused
+        on purpose: right after resuming, the network is usually still down
+        and the session may still be locked, and the retry machinery already
+        handles both.
+        """
+        logger.info("System resumed from suspend.")
+        if not callable(self.randomize_callback):
+            logger.debug("VPN randomization on resume skipped: no callback set.")
+            return
+
+        current_state = self._vpn_connector.current_state
+        if not isinstance(current_state, (states.Connected, states.Error)):
+            logger.debug("VPN randomization on resume not necessary: not connected.")
+            return
+
+        if isinstance(current_state, states.Error) and not self.is_connection_error_fatal:  # noqa: E501 # pylint: disable=line-too-long # nosemgrep: python.lang.maintainability.is-function-without-parentheses.is-function-without-parentheses
+            logger.debug("VPN reconnection not possible: fatal connection error.")
+            return
+
+        self._reset_retry_counter()
+        self.schedule_reconnection()
+
     def _on_network_up(self):
         """
         Callback called by the network monitor once the machine's network state
@@ -251,6 +290,12 @@ class VPNReconnector:  # pylint: disable=too-many-instance-attributes
             self._increase_retry_counter()
             self.schedule_reconnection()
             return False
+
+        if callable(self.randomize_callback):
+            logger.info("Reconnecting to a randomized server.")
+            self.randomize_callback()
+            self._increase_retry_counter()
+            return False  # Remove periodic source
 
         vpn_server = self._get_vpn_server(connection.server_id)
         if vpn_server:

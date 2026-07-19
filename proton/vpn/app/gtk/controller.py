@@ -49,6 +49,7 @@ from proton.vpn.connection.enum import KillSwitchSetting as\
 from proton.vpn.app.gtk.services import VPNReconnector
 from proton.vpn.app.gtk.services.reconnector.network_monitor import NetworkMonitor
 from proton.vpn.app.gtk.services.reconnector.session_monitor import SessionMonitor
+from proton.vpn.app.gtk.services.reconnector.sleep_monitor import SleepMonitor
 from proton.vpn.app.gtk.services.reconnector.vpn_monitor import VPNMonitor
 from proton.vpn.app.gtk.settings_watchers import SettingsWatchers
 from proton.vpn.app.gtk.utils import glib
@@ -116,8 +117,10 @@ class Controller:  # pylint: disable=too-many-public-methods, too-many-instance-
             vpn_monitor=VPNMonitor(vpn_connector=self._connector),
             network_monitor=NetworkMonitor(pool=self.executor),
             session_monitor=SessionMonitor(),
+            sleep_monitor=SleepMonitor(),
             async_executor=self.executor
         )
+        self.reconnector.randomize_callback = self.connect_to_random_server
 
     def login(self, username: str, password: str) -> Future:
         """
